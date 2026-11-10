@@ -92,6 +92,7 @@ fun MalNoteRoot() {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             // 갤럭시 Z 폴드 펼침 화면(약 840dp 폭)에서는 목록 + 상세 2단 레이아웃
             val wide = maxWidth >= 700.dp
+            val listWidth = maxWidth * 0.4f
             when {
                 top == Route.Recorder -> RecorderScreen(recorder)
                 top == Route.Settings -> SettingsScreen(onBack = ::pop)
@@ -99,7 +100,7 @@ fun MalNoteRoot() {
                     val selected = (top as? Route.Detail)?.id
                     Row(Modifier.fillMaxSize()) {
                         HomeScreen(
-                            modifier = Modifier.width(maxWidth * 0.4f).fillMaxHeight(),
+                            modifier = Modifier.width(listWidth).fillMaxHeight(),
                             selectedId = selected,
                             onOpen = { id -> if (top is Route.Detail) stack[stack.lastIndex] = Route.Detail(id) else push(Route.Detail(id)) },
                             onRecord = startRecording,
