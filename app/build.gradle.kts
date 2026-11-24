@@ -52,4 +52,6 @@ dependencies {
     implementation("androidx.health.connect:connect-client:1.1.0-alpha07")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // Health Connect가 끌어오는 빈 listenablefuture 아티팩트와의 충돌 해결 (CameraX ListenableFuture)
+    implementation("com.google.guava:guava:33.2.1-android")
 }
