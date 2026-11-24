@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.Rppg" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">#FF5C7A</item>
+        <item name="android:windowBackground">#101418</item>
+        <item name="android:statusBarColor">#101418</item>
+    </style>
+</resources>

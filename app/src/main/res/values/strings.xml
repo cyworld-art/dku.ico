@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">rPPG 심박 측정</string>
+    <string name="start">측정 시작</string>
+    <string name="stop">측정 중지</string>
+    <string name="bpm_placeholder">--</string>
+    <string name="status_idle">얼굴을 화면 중앙에 맞추고 측정 시작을 누르세요</string>
+    <string name="status_no_face">얼굴이 보이지 않습니다</string>
+    <string name="status_collecting">신호 수집 중… %1$d%%</string>
+    <string name="status_measuring">측정 중 — 움직이지 말고 편하게 호흡하세요</string>
+    <string name="permission_denied">카메라 권한이 필요합니다</string>
+    <string name="quality_good">신호 품질: 좋음 (SNR %1$.1f dB)</string>
+    <string name="quality_fair">신호 품질: 보통 (SNR %1$.1f dB)</string>
+    <string name="quality_poor">신호 품질: 낮음 (SNR %1$.1f dB) — 조명/움직임 확인</string>
+    <string name="disclaimer">연구·참고용이며 의료기기가 아닙니다</string>
+</resources>
