@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PointF
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
@@ -68,5 +69,57 @@ class OverlayView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? =
             if (mirror) { val nl = vw - rt; rt = vw - l; l = nl }
             c.drawRect(l, dy + r.top * s, rt, dy + r.bottom * s, roiPaint)
         }
+    }
+}
+
+/** rPPG vs 워치 심박 추이 비교 차트 (x: 측정 경과 초, y: BPM) */
+class CompareChartView @JvmOverloads constructor(ctx: Context, attrs: AttributeSet? = null) : View(ctx, attrs) {
+    private var a: List<PointF> = emptyList()
+    private var b: List<PointF> = emptyList()
+    private var xMax = 60f
+
+    private val pa = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#FF5C7A"); strokeWidth = 5f; style = Paint.Style.STROKE
+    }
+    private val pb = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#4FC3F7"); strokeWidth = 5f; style = Paint.Style.STROKE
+    }
+    private val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#4FC3F7") }
+    private val grid = Paint().apply { color = Color.parseColor("#2A3138"); strokeWidth = 2f }
+    private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#8A949E"); textSize = 26f
+    }
+    private val path = Path()
+
+    fun setData(rppg: List<PointF>, watch: List<PointF>, durationSec: Float) {
+        a = rppg.toList(); b = watch.toList(); xMax = durationSec; invalidate()
+    }
+
+    override fun onDraw(c: Canvas) {
+        val w = width.toFloat(); val h = height.toFloat()
+        val padL = 56f; val padB = 8f; val padT = 8f
+        val all = a + b
+        var lo = (all.minOfOrNull { it.y } ?: 60f) - 5f
+        var hi = (all.maxOfOrNull { it.y } ?: 100f) + 5f
+        if (hi - lo < 20f) { val m = (hi + lo) / 2; lo = m - 10f; hi = m + 10f }
+        fun px(x: Float) = padL + (x.coerceIn(0f, xMax) / xMax) * (w - padL - 8f)
+        fun py(y: Float) = padT + (1 - (y - lo) / (hi - lo)) * (h - padT - padB)
+
+        for (k in 0..2) {
+            val v = lo + (hi - lo) * k / 2
+            val y = py(v)
+            c.drawLine(padL, y, w, y, grid)
+            c.drawText(v.toInt().toString(), 4f, y + 9f, label)
+        }
+        drawLine(c, a, pa, ::px, ::py)
+        if (b.size >= 2) drawLine(c, b, pb, ::px, ::py)
+        for (p in b) c.drawCircle(px(p.x), py(p.y), 5f, dot)
+    }
+
+    private fun drawLine(c: Canvas, s: List<PointF>, p: Paint, px: (Float) -> Float, py: (Float) -> Float) {
+        if (s.size < 2) return
+        path.reset()
+        s.forEachIndexed { i, pt -> if (i == 0) path.moveTo(px(pt.x), py(pt.y)) else path.lineTo(px(pt.x), py(pt.y)) }
+        c.drawPath(path, p)
     }
 }

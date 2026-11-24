@@ -27,6 +27,7 @@ data class RppgResult(
 class RppgProcessor(
     private val fs: Double = 30.0,
     private val windowSec: Double = 10.0,
+    private val maxBufferSec: Double = 125.0,
     val minSec: Double = 5.0,
 ) {
     private val t = ArrayList<Double>()
@@ -48,7 +49,7 @@ class RppgProcessor(
         // 0.5초 이상 끊기면(얼굴 놓침·프레임 드랍) 새로 시작
         if (t.isNotEmpty() && (ts - t.last() > 0.5 || ts <= t.last())) reset()
         t.add(ts); r.add(rv); g.add(gv); b.add(bv)
-        while (t.size > 2 && t.last() - t.first() > windowSec + 1.0) {
+        while (t.size > 2 && t.last() - t.first() > maxBufferSec) {
             t.removeAt(0); r.removeAt(0); g.removeAt(0); b.removeAt(0)
         }
     }
@@ -57,12 +58,27 @@ class RppgProcessor(
     fun bufferedSeconds(): Double = if (t.size < 2) 0.0 else t.last() - t.first()
 
     fun estimate(): RppgResult? {
+        val h = bvp(windowSec, loHz, hiHz) ?: return null
+        val (f0, snr) = spectralPeak(h) ?: return null
+        return RppgResult(f0 * 60.0, snr, waveform(h, 6.0))
+    }
+
+    /** 버퍼 전체(최대 maxBufferSec)의 맥파로 HRV·스트레스 계산 */
+    fun hrv(hrHintBpm: Double): HrvResult? {
+        // 심박 기본파 ±0.6 Hz 협대역: 호흡성 변동(≤0.5 Hz)은 보존, 잡음은 크게 감소
+        val f0 = hrHintBpm / 60.0
+        val h = bvp(maxBufferSec, maxOf(0.6, f0 - 0.6), f0 + 0.6) ?: return null
+        return Hrv.analyze(h, fs, hrHintBpm)
+    }
+
+    /** 최근 sec초 구간의 필터링된 맥파(BVP) */
+    private fun bvp(sec: Double, lo: Double, hi: Double): DoubleArray? {
         val ts: DoubleArray; val rs: DoubleArray; val gs: DoubleArray; val bs: DoubleArray
         synchronized(this) {
             if (bufferedSeconds() < minSec) return null
             ts = t.toDoubleArray(); rs = r.toDoubleArray(); gs = g.toDoubleArray(); bs = b.toDoubleArray()
         }
-        val span = minOf(windowSec, ts.last() - ts.first())
+        val span = minOf(sec, ts.last() - ts.first())
         val n = floor(span * fs).toInt()
         if (n < (minSec * fs).toInt() - 1) return null
         val tStart = ts.last() - (n - 1) / fs
@@ -72,11 +88,9 @@ class RppgProcessor(
         val B = resample(ts, bs, tStart, n)
 
         var h = pos(R, G, B)
-        h = filtfilt(h, Biquad.highPass(loHz, fs))
-        h = filtfilt(h, Biquad.lowPass(hiHz, fs))
-
-        val (f0, snr) = spectralPeak(h) ?: return null
-        return RppgResult(f0 * 60.0, snr, waveform(h, 6.0))
+        h = filtfilt(h, Biquad.highPass(lo, fs))
+        h = filtfilt(h, Biquad.lowPass(hi, fs))
+        return h
     }
 
     // ---------- 단계별 구현 ----------
