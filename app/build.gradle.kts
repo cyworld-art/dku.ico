@@ -11,8 +11,8 @@ android {
         applicationId = "com.lim.rppg"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "2.1"
     }
     // 고정 디버그 서명키: CI 빌드마다 서명이 달라져 업데이트 설치가 막히는 것을 방지 (배포용 키 아님)
     signingConfigs {

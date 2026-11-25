@@ -67,6 +67,7 @@ class MainActivity : AppCompatActivity() {
     private var camera: Camera? = null
 
     private val processor = RppgProcessor()
+    private val recorder = SessionRecorder()
     private val recentBpm = ArrayDeque<Double>()   // 카메라 스레드 전용
 
     @Volatile private var measuring = false
@@ -110,7 +111,7 @@ class MainActivity : AppCompatActivity() {
         startButton = findViewById(R.id.startButton)
         cameraExecutor = Executors.newSingleThreadExecutor()
 
-        startButton.setOnClickListener { if (measuring) stopMeasuring("측정을 중지했습니다") else startMeasuring() }
+        startButton.setOnClickListener { if (measuring) userStop() else startMeasuring() }
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             startCamera()
@@ -223,6 +224,7 @@ class MainActivity : AppCompatActivity() {
         lastHrv = null
         rppgSeries.clear(); watchSeries.clear()
         sessionStartWall = System.currentTimeMillis()
+        recorder.reset(sessionStartWall)
         signalView.clear()
         compareChart.setData(rppgSeries, watchSeries, durationSec.toFloat())
         bpmText.text = "--"; watchText.text = "--"; stressText.text = "--"
@@ -271,14 +273,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     /** rPPG 각 시점과 가장 가까운 워치 값을 짝지어 평균 절대 차이 계산 */
-    private fun updateCompare() {
-        if (watchSeries.isEmpty() || rppgSeries.isEmpty()) return
+    /** @return (평균 절대 차이, 짝 개수) */
+    private fun compareStats(): Pair<Double, Int> {
         val tol = if (prefs.watchMode == "hc") 30f else 3f
         var sum = 0.0; var n = 0
         for (p in rppgSeries) {
             val q = watchSeries.minByOrNull { abs(it.x - p.x) } ?: continue
             if (abs(q.x - p.x) <= tol) { sum += abs(q.y - p.y); n++ }
         }
+        return (if (n > 0) sum / n else Double.NaN) to n
+    }
+
+    private fun updateCompare() {
+        if (watchSeries.isEmpty() || rppgSeries.isEmpty()) return
+        val (mae, n) = compareStats()
+        val sum = mae * n
         val now = shownBpm
         val lastW = watchSeries.last().y
         val cur = if (now != null) "현재 차이 %+.0f BPM".format(now - lastW) else ""
@@ -290,6 +299,7 @@ class MainActivity : AppCompatActivity() {
     private fun onFrame(f: FrameSample) {
         runOnUiThread { overlay.update(f.rois, f.uprightWidth, f.uprightHeight) }
         if (!measuring) return
+        recorder.add(f)
 
         if (!f.faceFound) {
             processor.reset()
@@ -387,11 +397,81 @@ class MainActivity : AppCompatActivity() {
         }
         prefs.sasang?.let { sb.append("\n${it.label} 스트레스 관리: ${it.stressTip}") }
         sb.append("\n\n※ 카메라 HRV는 잡음 때문에 변동성이 실제보다 크게 나올 수 있는 참고용 추정치입니다.")
-        AlertDialog.Builder(this)
+
+        val auto = prefs.autoSave
+        if (auto) saveSession(silent = true)?.let { sb.append("\n\n💾 저장됨: $it") }
+        val dlg = AlertDialog.Builder(this)
             .setTitle("측정 결과")
             .setMessage(sb.toString())
             .setPositiveButton("확인", null)
+        if (!auto) dlg.setNeutralButton("저장") { _, _ -> saveSession(silent = false) }
+        dlg.show()
+    }
+
+    /** 측정 버튼으로 중간에 멈춘 경우: 5초 이상 수집했으면 저장 여부를 물음 */
+    private fun userStop() {
+        stopMeasuring("측정을 중지했습니다")
+        if (recorder.durationSec() < 5.0) return
+        AlertDialog.Builder(this)
+            .setTitle("측정 중지")
+            .setMessage("지금까지 %.0f초 분량의 데이터를 저장할까요?".format(recorder.durationSec()))
+            .setPositiveButton("저장") { _, _ -> saveSession(silent = false) }
+            .setNegativeButton("저장 안 함", null)
             .show()
+    }
+
+    /** raw/hr/summary 3개 파일 저장. @return 저장 위치 또는 실패 시 null */
+    private fun saveSession(silent: Boolean): String? {
+        val base = SessionStore.baseName(sessionStartWall)
+        val files = listOf(
+            "${base}_raw.csv" to recorder.rawCsv(),
+            "${base}_hr.csv" to SessionStore.hrCsv(rppgSeries, watchSeries),
+            "${base}_summary.txt" to summaryText(),
+        )
+        return try {
+            val where = SessionStore.save(this, files)
+            if (!silent) Toast.makeText(this, "저장됨: $where/${base}_*", Toast.LENGTH_LONG).show()
+            "$where/${base}_*"
+        } catch (e: Exception) {
+            Toast.makeText(this, "저장 실패: ${e.message}", Toast.LENGTH_LONG).show()
+            null
+        }
+    }
+
+    /** MATLAB에서 읽기 쉬운 key=value 요약 */
+    private fun summaryText(): String {
+        val h = lastHrv
+        val (mae, n) = if (watchSeries.isNotEmpty()) compareStats() else (Double.NaN to 0)
+        fun d(v: Double?, fmt: String = "%.2f") = if (v == null || v.isNaN()) "NaN" else String.format(java.util.Locale.US, fmt, v)
+        val lines = listOf(
+            "app_version" to "2.1",
+            "start_time" to java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", java.util.Locale.US).format(java.util.Date(sessionStartWall)),
+            "duration_setting_s" to durationSec.toString(),
+            "recorded_s" to d(recorder.durationSec()),
+            "frames" to recorder.frames.toString(),
+            "fs_resample_hz" to "30",
+            "age" to prefs.age.toString(),
+            "sex" to prefs.sex,
+            "height_cm" to prefs.heightCm.toString(),
+            "weight_kg" to prefs.weightKg.toString(),
+            "rppg_bpm" to d(shownBpm, "%.1f"),
+            "watch_mode" to prefs.watchMode,
+            "watch_device" to (if (prefs.watchMode == "ble") prefs.bleName.ifEmpty { prefs.bleAddress } else ""),
+            "watch_bpm_mean" to d(watchSeries.takeIf { it.isNotEmpty() }?.map { it.y.toDouble() }?.average(), "%.1f"),
+            "watch_mae_bpm" to d(mae),
+            "watch_pairs" to n.toString(),
+            "stress_score" to (h?.score?.toString() ?: "NaN"),
+            "stress_level" to (h?.level?.name ?: ""),
+            "stress_reliable" to (h?.reliable?.toString() ?: "false"),
+            "sqrt_si" to d(h?.stressIndex),
+            "rmssd_ms" to d(h?.rmssdMs, "%.1f"),
+            "sdnn_ms" to d(h?.sdnnMs, "%.1f"),
+            "beat_yield" to d(h?.beatYield, "%.3f"),
+            "beats" to (h?.beats?.toString() ?: "0"),
+            "constitution" to (prefs.sasang?.label ?: ""),
+            "constitution_pct_ty_sy_te_se" to prefs.constitutionPct,
+        )
+        return lines.joinToString("\n") { "${it.first}=${it.second}" } + "\n"
     }
 
     override fun onDestroy() {

@@ -36,6 +36,13 @@ class SettingsActivity : AppCompatActivity() {
         }
         c.addView(durGroup)
 
+        c.addView(heading("데이터 저장"))
+        c.addView(body("측정 데이터를 휴대폰 '다운로드/rPPG' 폴더에 CSV로 저장합니다. PC로 옮겨 MATLAB(rppg_analyze.m)으로 재분석할 수 있습니다.", 13f, "#9AA4AE"))
+        val autoSave = android.widget.CheckBox(this).apply {
+            text = "측정 완료 시 자동 저장"; isChecked = prefs.autoSave
+        }
+        c.addView(autoSave)
+
         c.addView(Button(this).apply {
             text = "저장"
             setOnClickListener {
@@ -46,6 +53,7 @@ class SettingsActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
                 prefs.age = a; prefs.sex = sex
+                prefs.autoSave = autoSave.isChecked
                 prefs.heightCm = height.text.toString().toIntOrNull()?.takeIf { it in 80..250 } ?: 0
                 prefs.weightKg = weight.text.toString().toIntOrNull()?.takeIf { it in 20..300 } ?: 0
                 if (durGroup.checkedRadioButtonId > 2000) prefs.durationSec = durGroup.checkedRadioButtonId - 2000

@@ -43,6 +43,11 @@ class Prefs(ctx: Context) {
         get() = sp.getString("constitution_pct", "") ?: ""
         set(v) = sp.edit().putString("constitution_pct", v).apply()
 
+    /** 측정 완료 시 자동 저장 */
+    var autoSave: Boolean
+        get() = sp.getBoolean("auto_save", false)
+        set(v) = sp.edit().putBoolean("auto_save", v).apply()
+
     val profileReady: Boolean get() = age > 0 && sex.isNotEmpty()
 
     val bmi: Double?
